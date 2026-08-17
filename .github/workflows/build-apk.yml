@@ -3,7 +3,8 @@ name: Build Rikaz APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -13,23 +14,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract Project
+        run: |
+          unzip -o Rikaz_Project.zip -d project
+          echo "Extracted files:"
+          find project -maxdepth 3 -type f | head -100
+
+      - name: Find Android Project
+        run: |
+          GRADLEW=$(find project -name gradlew -type f | head -1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew not found"
+            find project -maxdepth 5 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          chmod +x "$GRADLEW"
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android
-        uses: android-actions/setup-android@v3
-
-      - name: Build APK
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Rikaz
-        run: gradle :app:assembleDebug
+      - name: Build Rikaz APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload Rikaz APK
         uses: actions/upload-artifact@v4
         with:
           name: Rikaz-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            ${{ env.PROJECT_DIR }}/app/build/outputs/apk/**/*.apk
