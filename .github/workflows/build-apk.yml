@@ -14,25 +14,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract Project
+      - name: Find Rikaz ZIP
+        shell: bash
         run: |
-          unzip -o Rikaz_Project.zip -d project
-          echo "Extracted files:"
-          find project -maxdepth 3 -type f | head -100
+          set -e
+          ZIP=$(find . -maxdepth 2 -type f -name 'Rikaz_EXACT_HTML_PROJECT.zip' | head -1)
 
-      - name: Find Android Project
-        run: |
-          GRADLEW=$(find project -name gradlew -type f | head -1)
-
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found"
-            find project -maxdepth 5 -type f
+          if [ -z "$ZIP" ]; then
+            echo "Rikaz ZIP not found"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          chmod +x "$GRADLEW"
+          echo "ZIP found: $ZIP"
+          mkdir -p /tmp/rikaz
+          unzip -q "$ZIP" -d /tmp/rikaz
+
+          PROJECT_DIR=$(find /tmp/rikaz -name settings.gradle -type f -print -quit | xargs dirname)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Android project not found"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -40,18 +44,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Rikaz APK
+      - name: Build Rikaz
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          gradle :app:assembleDebug
 
       - name: Upload Rikaz APK
         uses: actions/upload-artifact@v4
         with:
           name: Rikaz-APK
-          path: |
-            ${{ env.PROJECT_DIR }}/app/build/outputs/apk/**/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
